@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
@@ -6,6 +6,22 @@ import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [apiMessage, setApiMessage] = useState<string | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/hello')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data: { message: string; timestamp: string }) => {
+        setApiMessage(`${data.message} (at ${data.timestamp})`)
+      })
+      .catch((err: Error) => {
+        setApiError(`API error: ${err.message}`)
+      })
+  }, [])
 
   return (
     <>
@@ -27,6 +43,11 @@ function App() {
         >
           Count is {count}
         </button>
+        <div className="api-response">
+          {apiMessage && <p>Backend says: <strong>{apiMessage}</strong></p>}
+          {apiError && <p style={{ color: 'red' }}>{apiError}</p>}
+          {!apiMessage && !apiError && <p>Calling Flask API...</p>}
+        </div>
       </section>
 
       <div className="ticks"></div>
