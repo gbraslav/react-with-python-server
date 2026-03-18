@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -17,13 +17,28 @@ interface Record {
   data_field4: string
 }
 
+type SortKey = keyof Record
+type SortDir = 'asc' | 'desc'
+
 const PAGE_SIZE = 12
+
+const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: 'id', label: 'ID' },
+  { key: 'month', label: 'Month' },
+  { key: 'data_field1', label: 'Field 1' },
+  { key: 'data_field2', label: 'Field 2' },
+  { key: 'data_field3', label: 'Field 3' },
+  { key: 'data_field4', label: 'Field 4' },
+]
 
 export default function Dashboard() {
   const [data, setData] = useState<Record[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
+  const [sortKey, setSortKey] = useState<SortKey>('id')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [filters, setFilters] = useState<Partial<{ [K in SortKey]: string }>>({})
 
   useEffect(() => {
     fetch('/api/chart-data')
@@ -41,12 +56,47 @@ export default function Dashboard() {
       })
   }, [])
 
+  const filtered = useMemo(() => {
+    return data.filter((row) =>
+      COLUMNS.every(({ key }) => {
+        const f = filters[key]
+        if (!f) return true
+        return String(row[key]).toLowerCase().includes(f.toLowerCase())
+      })
+    )
+  }, [data, filters])
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const av = a[sortKey]
+      const bv = b[sortKey]
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filtered, sortKey, sortDir])
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+    setPage(0)
+  }
+
+  const handleFilter = (key: SortKey, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }))
+    setPage(0)
+  }
+
   if (loading) return <p className="p-8 text-center">Loading...</p>
   if (error) return <p className="p-8 text-center text-red-500">Error: {error}</p>
   if (data.length === 0) return <p className="p-8 text-center">No data</p>
 
-  const totalPages = Math.ceil(data.length / PAGE_SIZE)
-  const pageData = data.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE)
+  const pageData = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   // Venn diagram data: count categories in current page
   const vennCounts = { A: 0, B: 0, AB: 0 }
@@ -66,30 +116,55 @@ export default function Dashboard() {
           <CardTitle>Data Table</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Month</TableHead>
-                <TableHead>Field 1</TableHead>
-                <TableHead>Field 2</TableHead>
-                <TableHead>Field 3</TableHead>
-                <TableHead>Field 4</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pageData.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.id}</TableCell>
-                  <TableCell>{row.month}</TableCell>
-                  <TableCell>{row.data_field1}</TableCell>
-                  <TableCell>{row.data_field2}</TableCell>
-                  <TableCell>{row.data_field3}</TableCell>
-                  <TableCell>{row.data_field4}</TableCell>
+          <div
+            className="rounded-lg"
+            style={{
+              borderTop: '2px solid #d1d5db',
+              borderLeft: '2px solid #d1d5db',
+              borderRight: '2px solid #9ca3af',
+              borderBottom: '2px solid #9ca3af',
+              boxShadow: '3px 3px 6px rgba(0,0,0,0.15), inset 0 0 0 1px rgba(255,255,255,0.4)',
+            }}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {COLUMNS.map(({ key, label }) => (
+                    <TableHead key={key}>
+                      <div className="space-y-1">
+                        <button
+                          className="font-semibold hover:text-black flex items-center gap-1"
+                          onClick={() => handleSort(key)}
+                        >
+                          {label}
+                          {sortKey === key ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''}
+                        </button>
+                        <input
+                          type="text"
+                          placeholder="Filter..."
+                          className="w-full text-xs px-1.5 py-0.5 border rounded bg-white font-normal"
+                          value={filters[key] ?? ''}
+                          onChange={(e) => handleFilter(key, e.target.value)}
+                        />
+                      </div>
+                    </TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {pageData.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.id}</TableCell>
+                    <TableCell>{row.month}</TableCell>
+                    <TableCell>{row.data_field1}</TableCell>
+                    <TableCell>{row.data_field2}</TableCell>
+                    <TableCell>{row.data_field3}</TableCell>
+                    <TableCell>{row.data_field4}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-4 mt-4">
               <button
