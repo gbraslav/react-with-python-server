@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { useAuth } from '@/context/AuthContext'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -32,6 +35,8 @@ const COLUMNS: { key: SortKey; label: string }[] = [
 ]
 
 export default function Dashboard() {
+  const { logout, token } = useAuth()
+  const navigate = useNavigate()
   const [data, setData] = useState<Record[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,7 +46,10 @@ export default function Dashboard() {
   const [filters, setFilters] = useState<Partial<{ [K in SortKey]: string }>>({})
 
   useEffect(() => {
-    fetch('/api/chart-data')
+    if (!token) return
+    fetch('/api/chart-data', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
@@ -54,7 +62,7 @@ export default function Dashboard() {
         setError(err.message)
         setLoading(false)
       })
-  }, [])
+  }, [token])
 
   const filtered = useMemo(() => {
     return data.filter((row) =>
@@ -108,7 +116,18 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white p-8 space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <Button
+          variant="outline"
+          onClick={async () => {
+            await logout()
+            navigate('/login')
+          }}
+        >
+          Logout
+        </Button>
+      </div>
 
       {/* Data Table */}
       <Card>
