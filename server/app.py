@@ -1,11 +1,13 @@
 import os
 import sys
 from decimal import Decimal
+from functools import wraps
 from pathlib import Path
 from datetime import datetime, timezone
 
+import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from sqlalchemy import create_engine, Integer, String, Numeric, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
@@ -40,10 +42,51 @@ class ChartData(Base):
     data_field4: Mapped[str] = mapped_column(String)
 
 
+# --- Session Auth via Neon Auth ---
+
+NEON_AUTH_URL = os.environ.get("NEON_AUTH_URL")
+
+if not NEON_AUTH_URL:
+    print("WARNING: NEON_AUTH_URL not set. Auth endpoints will reject all requests.", file=sys.stderr)
+
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Authorization header required"}), 401
+
+        token = auth_header.split("Bearer ", 1)[1]
+
+        if not NEON_AUTH_URL:
+            return jsonify({"error": "Auth not configured"}), 401
+
+        # Validate session token by calling Neon Auth's get-session endpoint
+        try:
+            resp = requests.get(
+                f"{NEON_AUTH_URL}/get-session",
+                headers={"Authorization": f"Bearer {token}"},
+                cookies={"better-auth.session_token": token},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                return jsonify({"error": "Invalid or expired token"}), 401
+            session_data = resp.json()
+            if not session_data or not session_data.get("user"):
+                return jsonify({"error": "Invalid or expired token"}), 401
+            g.user = session_data["user"]
+        except Exception:
+            return jsonify({"error": "Auth service unavailable"}), 401
+
+        return f(*args, **kwargs)
+    return decorated
+
+
 # --- Flask App ---
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True, expose_headers=["Authorization"])
 
 
 @app.route("/api/hello")
@@ -55,6 +98,7 @@ def hello():
 
 
 @app.route("/api/chart-data")
+# @require_auth  # TODO: re-enable auth
 def get_chart_data():
     try:
         with Session(engine) as session:
@@ -76,6 +120,7 @@ def get_chart_data():
 
 
 @app.route("/api/health")
+@require_auth
 def health():
     try:
         with Session(engine) as session:

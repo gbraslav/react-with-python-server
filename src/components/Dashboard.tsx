@@ -35,8 +35,13 @@ const COLUMNS: { key: SortKey; label: string }[] = [
 ]
 
 export default function Dashboard() {
-  const { logout, token } = useAuth()
+  const { logout, token, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+
+  // TODO: re-enable auth redirect
+  // useEffect(() => {
+  //   if (!authLoading && !user) navigate('/login')
+  // }, [authLoading, user, navigate])
   const [data, setData] = useState<Record[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,10 +51,7 @@ export default function Dashboard() {
   const [filters, setFilters] = useState<Partial<{ [K in SortKey]: string }>>({})
 
   useEffect(() => {
-    if (!token) return
-    fetch('/api/chart-data', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    fetch('/api/chart-data')
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
@@ -62,7 +64,7 @@ export default function Dashboard() {
         setError(err.message)
         setLoading(false)
       })
-  }, [token])
+  }, [])
 
   const filtered = useMemo(() => {
     return data.filter((row) =>
